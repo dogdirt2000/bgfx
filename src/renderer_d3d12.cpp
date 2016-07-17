@@ -1014,7 +1014,7 @@ namespace bgfx { namespace d3d12
 
 				for (uint32_t ii = 0; ii < TextureFormat::Count; ++ii)
 				{
-					uint8_t support = BGFX_CAPS_FORMAT_TEXTURE_NONE;
+					uint16_t support = BGFX_CAPS_FORMAT_TEXTURE_NONE;
 
 					const DXGI_FORMAT fmt = isDepth(TextureFormat::Enum(ii) )
 						? s_textureFormat[ii].m_fmtDsv
@@ -5413,12 +5413,14 @@ data.NumQualityLevels = 0;
 
 		m_gpuTimer.end(m_commandList);
 
-		while (m_gpuTimer.get() )
+		do
 		{
 			double toGpuMs = 1000.0 / double(m_gpuTimer.m_frequency);
 			elapsedGpuMs   = m_gpuTimer.m_elapsed * toGpuMs;
 			maxGpuElapsed  = elapsedGpuMs > maxGpuElapsed ? elapsedGpuMs : maxGpuElapsed;
 		}
+		while (m_gpuTimer.get() );
+
 		maxGpuLatency = bx::uint32_imax(maxGpuLatency, m_gpuTimer.m_control.available()-1);
 
 		const int64_t timerFreq = bx::getHPFrequency();

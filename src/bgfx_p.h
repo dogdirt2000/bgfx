@@ -1375,6 +1375,8 @@ namespace bgfx
 			, m_waitSubmit(0)
 			, m_waitRender(0)
 			, m_hmdInitialized(false)
+			, m_capture(false)
+			, m_discard(false)
 		{
 			SortKey term;
 			term.reset();
@@ -1428,6 +1430,7 @@ namespace bgfx
 			m_cmdPre.start();
 			m_cmdPost.start();
 			m_uniformBuffer->reset();
+			m_capture = false;
 			m_discard = false;
 		}
 
@@ -1457,8 +1460,9 @@ namespace bgfx
 		void setState(uint64_t _state, uint32_t _rgba)
 		{
 			uint8_t blend = ( (_state&BGFX_STATE_BLEND_MASK)>>BGFX_STATE_BLEND_SHIFT)&0xff;
+			uint8_t alphaRef = ( (_state&BGFX_STATE_ALPHA_REF_MASK)>>BGFX_STATE_ALPHA_REF_SHIFT)&0xff;
 			// transparency sort order table
-			m_key.m_trans = "\x0\x1\x1\x2\x2\x1\x2\x1\x2\x1\x1\x1\x1\x1\x1\x1\x1\x1\x1"[( (blend)&0xf) + (!!blend)];
+			m_key.m_trans = "\x0\x2\x2\x3\x3\x2\x3\x2\x3\x2\x2\x2\x2\x2\x2\x2\x2\x2\x2"[( (blend)&0xf) + (!!blend)] + !!alphaRef;
 			m_draw.m_stateFlags = _state;
 			m_draw.m_rgba = _rgba;
 		}
@@ -1836,6 +1840,7 @@ namespace bgfx
 		int64_t m_waitRender;
 
 		bool m_hmdInitialized;
+		bool m_capture;
 		bool m_discard;
 	};
 
@@ -2622,8 +2627,9 @@ namespace bgfx
 				uint16_t flags = BGFX_BUFFER_NONE;
 				cmdbuf.write(flags);
 
-				tib = (TransientIndexBuffer*)BX_ALLOC(g_allocator, sizeof(TransientIndexBuffer)+_size);
-				tib->data   = (uint8_t*)&tib[1];
+				const uint32_t size = BX_ALIGN_16(sizeof(TransientIndexBuffer) ) + BX_ALIGN_16(_size);
+				tib = (TransientIndexBuffer*)BX_ALIGNED_ALLOC(g_allocator, size, 16);
+				tib->data   = (uint8_t *)tib + BX_ALIGN_16(sizeof(TransientIndexBuffer) );
 				tib->size   = _size;
 				tib->handle = handle;
 			}
@@ -2637,7 +2643,7 @@ namespace bgfx
 			cmdbuf.write(_tib->handle);
 
 			m_submit->free(_tib->handle);
-			BX_FREE(g_allocator, _tib);
+			BX_ALIGNED_FREE(g_allocator, _tib, 16);
 		}
 
 		BGFX_API_FUNC(void allocTransientIndexBuffer(TransientIndexBuffer* _tib, uint32_t _num) )
@@ -2678,8 +2684,9 @@ namespace bgfx
 				uint16_t flags = BGFX_BUFFER_NONE;
 				cmdbuf.write(flags);
 
-				tvb = (TransientVertexBuffer*)BX_ALLOC(g_allocator, sizeof(TransientVertexBuffer)+_size);
-				tvb->data = (uint8_t*)&tvb[1];
+				const uint32_t size = BX_ALIGN_16(sizeof(TransientVertexBuffer) ) + BX_ALIGN_16(_size);
+				tvb = (TransientVertexBuffer*)BX_ALIGNED_ALLOC(g_allocator, size, 16);
+				tvb->data = (uint8_t *)tvb + BX_ALIGN_16(sizeof(TransientVertexBuffer) );
 				tvb->size = _size;
 				tvb->startVertex = 0;
 				tvb->stride = stride;
@@ -2696,7 +2703,7 @@ namespace bgfx
 			cmdbuf.write(_tvb->handle);
 
 			m_submit->free(_tvb->handle);
-			BX_FREE(g_allocator, _tvb);
+			BX_ALIGNED_FREE(g_allocator, _tvb, 16);
 		}
 
 		BGFX_API_FUNC(void allocTransientVertexBuffer(TransientVertexBuffer* _tvb, uint32_t _num, const VertexDecl& _decl) )
@@ -3125,20 +3132,21 @@ namespace bgfx
 			textureDecRef(_handle);
 		}
 
-		BGFX_API_FUNC(void readTexture(TextureHandle _handle, void* _data) )
+		BGFX_API_FUNC(uint32_t readTexture(TextureHandle _handle, void* _data) )
 		{
 			CommandBuffer& cmdbuf = getCommandBuffer(CommandBuffer::ReadTexture);
 			cmdbuf.write(_handle);
 			cmdbuf.write(_data);
+			return m_frames + 2;
 		}
 
-		BGFX_API_FUNC(void readTexture(FrameBufferHandle _handle, uint8_t _attachment, void* _data) )
+		BGFX_API_FUNC(uint32_t readTexture(FrameBufferHandle _handle, uint8_t _attachment, void* _data) )
 		{
 			const FrameBufferRef& ref = m_frameBufferRef[_handle.idx];
 			BX_CHECK(!ref.m_window, "Can't sample window frame buffer.");
 			TextureHandle textureHandle = ref.un.m_th[_attachment];
 			BX_CHECK(isValid(textureHandle), "Frame buffer texture %d is invalid.", _attachment);
-			readTexture(textureHandle, _data);
+			return readTexture(textureHandle, _data);
 		}
 
 		void resizeTexture(TextureHandle _handle, uint16_t _width, uint16_t _height)
@@ -3865,7 +3873,7 @@ namespace bgfx
 			blit(_id, _dst, _dstMip, _dstX, _dstY, _dstZ, textureHandle, _srcMip, _srcX, _srcY, _srcZ, _width, _height, _depth);
 		}
 
-		BGFX_API_FUNC(uint32_t frame() );
+		BGFX_API_FUNC(uint32_t frame(bool _capture = false) );
 
 		void dumpViewStats();
 		void freeDynamicBuffers();

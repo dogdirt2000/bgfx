@@ -628,7 +628,7 @@ namespace bgfx { namespace d3d9
 
 			for (uint32_t ii = 0; ii < TextureFormat::Count; ++ii)
 			{
-				uint8_t support = 0;
+				uint16_t support = BGFX_CAPS_FORMAT_TEXTURE_NONE;
 
 				support |= SUCCEEDED(m_d3d9->CheckDeviceFormat(m_adapter
 					, m_deviceType
@@ -4188,12 +4188,14 @@ namespace bgfx { namespace d3d9
 		{
 			m_gpuTimer.end();
 
-			while (m_gpuTimer.get() )
+			do
 			{
 				double toGpuMs = 1000.0 / double(m_gpuTimer.m_frequency);
 				elapsedGpuMs   = m_gpuTimer.m_elapsed * toGpuMs;
 				maxGpuElapsed  = elapsedGpuMs > maxGpuElapsed ? elapsedGpuMs : maxGpuElapsed;
 			}
+			while (m_gpuTimer.get() );
+
 			maxGpuLatency = bx::uint32_imax(maxGpuLatency, m_gpuTimer.m_control.available()-1);
 		}
 
